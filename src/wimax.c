@@ -399,6 +399,8 @@ static int read_tap()
 	return r;
 }
 
+#ifdef TARGET_DARWIN
+/* On Darwin, poll() does not work with devices */
 static int process_events_once(int timeout)
 {
 	struct timeval tv = {0, 0};
@@ -452,6 +454,53 @@ static int process_events_once(int timeout)
 
 	return 0;
 }
+#else
+static int process_events_once(int timeout)
+{
+	struct timeval tv = {0, 0};
+	int r;
+	int libusb_delay;
+	int delay;
+	unsigned int i;
+	char process_libusb = 0;
+
+	r = libusb_get_next_timeout(ctx, &tv);
+	if (r == 1 && tv.tv_sec == 0 && tv.tv_usec == 0)
+	{
+		r = libusb_handle_events_timeout(ctx, &tv);
+	}
+
+	delay = libusb_delay = tv.tv_sec * 1000 + tv.tv_usec;
+	if (delay <= 0 || delay > timeout)
+	{
+		delay = timeout;
+	}
+
+	CHECK_NEGATIVE(poll(fds, nfds, delay));
+
+	process_libusb = (r == 0 && delay == libusb_delay);
+
+	for (i = 0; i < nfds; ++i)
+	{
+		if (fds[i].fd == tap_fd) {
+			if (fds[i].revents)
+			{
+				CHECK_NEGATIVE(read_tap());
+			}
+			continue;
+		}
+		process_libusb |= fds[i].revents;
+	}
+
+	if (process_libusb)
+	{
+		struct timeval tv = {.tv_sec = 0, .tv_usec = 0};
+		CHECK_NEGATIVE(libusb_handle_events_timeout(ctx, &tv));
+	}
+
+	return 0;
+}
+#endif
 
 /* handle events until timeout is reached or all of the events in event_mask happen */
 static int process_events_by_mask(int timeout, unsigned int event_mask)
