@@ -431,7 +431,7 @@ static int process_events_once(int timeout)
 		FD_SET(fds[i].fd, &set);
 	}
 
-	CHECK_NEGATIVE(select(max_fd + 1, &set, NULL, NULL, &tv));
+	CHECK_NEGATIVE(select(max_fd + 1, &set, NULL, NULL, NULL));
 	process_libusb = (r == 0 && delay == libusb_delay);
 
 	for (i = 0; i < nfds; ++i)
